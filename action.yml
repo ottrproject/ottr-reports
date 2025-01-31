@@ -15,6 +15,8 @@ inputs:
     description: "What number of errors should make this check fail?"
     default: 0
     type: number
+  token:
+    required: true
 
 outputs:
   error_name:
@@ -25,11 +27,87 @@ outputs:
     description: "How many errors were found."
 
 runs:
-  using: 'docker'
-  image: 'docker://jhudsl/ottr-reports'
-  args:
-    - ${{ inputs.check_type }}
-    - ${{ inputs.error_min }}
+  using: "composite"
+  steps:
+    - name: Declare report name
+      id: setup
+      run: |
+        if ${{ contains(inputs.check_type, 'spelling') }} ;then
+          echo "error_name=spelling errors" >> $GITHUB_OUTPUT
+          echo "ignore_file=resources/dictionary.txt" >> $GITHUB_OUTPUT
+        elif ${{ contains(inputs.check_type, 'urls') }} ;then
+          echo "error_name=broken url errors" >> $GITHUB_OUTPUT
+          echo "ignore_file=resources/ignore-urls.txt" >> $GITHUB_OUTPUT
+        elif ${{ contains(inputs.check_type, 'quiz_format') }} ;then
+          echo "error_name=quiz formatting errors" >> $GITHUB_OUTPUT
+        fi
+      shell: bash
+
+    - name: Build components of the spell check comment
+      id: build-components
+      run: |
+        branch_name='preview-${{ github.event.pull_request.number }}'
+        echo "time=$(date +'%Y-%m-%d-%T')" >> $GITHUB_OUTPUT
+        echo "commit_id=$GITHUB_SHA" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Find Comment
+      uses: peter-evans/find-comment@v3
+      id: fc1
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: ${{ steps.setup.outputs.error_name }}
+
+    - name: Status update
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        comment-id: ${{ steps.fc1.outputs.comment-id }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          The ${{ steps.setup.outputs.error_name }} check is currently being re-run :runner:
+          _Comment updated at ${{ steps.build-components.outputs.time }} with changes from ${{ steps.build-components.outputs.commit_id }}_
+        edit-mode: replace
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.token }}
+
+    - name: Run the check
+      id: check_results
+      run: |
+        docker run -v ${{ github.workspace }}:/home \
+          --workdir=/home \
+          jhudsl/ottrpal:dev \
+          ${{ inputs.check_type }} "/home" && \
+          echo "Container exited successfully" || echo "Container failed"
+
+        if [ ${{ inputs.check_type }} == "spelling" ];then
+          error_name='spelling errors'
+          report_path=${{ github.workspace }}/check_reports/spell_check_results.tsv
+        elif [ ${{ inputs.check_type }} == "urls" ];then
+          error_name='broken URLs'
+          report_path=${{ github.workspace }}/check_reports/url_checks.tsv
+        elif [ ${{ inputs.check_type }} == "quiz_format" ];then
+          error_name='quiz format errors'
+          report_path=${{ github.workspace }}/check_reports/question_error_report.tsv
+        fi
+
+        # Save output
+        echo "error_name=$error_name" >> $GITHUB_OUTPUT
+        echo "report_path=$report_path" >> $GITHUB_OUTPUT
+        echo "chk_results=$chk_results" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Upload Artifact
+      id: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.check_results.outputs.error_name }}
+        path: ${{ steps.check_results.outputs.report_path }}
+        if-no-files-found: error
 
 branding:
   icon: "briefcase"
