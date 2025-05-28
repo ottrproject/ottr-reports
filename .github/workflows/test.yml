@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
+    container:
+      image: jhudsl/base_ottr:main
 
 
     steps:
