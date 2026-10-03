@@ -93,7 +93,7 @@ runs:
 
         docker run -v ${{ github.workspace }}:/home \
           --workdir=/home \
-          jhudsl/ottrpal:dev \
+          jhudsl/ottrpal:main \
           spelling || exit_code=$?
 
         report_path=${{ github.workspace }}/check_reports/spell_check_results.tsv
@@ -119,7 +119,7 @@ runs:
 
         docker run -v ${{ github.workspace }}:/home \
           --workdir=/home \
-          jhudsl/ottrpal:dev \
+          jhudsl/ottrpal:main \
           urls || exit_code=$?
 
         report_path=${{ github.workspace }}/check_reports/url_checks.tsv
@@ -145,7 +145,7 @@ runs:
 
         docker run -v ${{ github.workspace }}:/home \
           --workdir=/home \
-          jhudsl/ottrpal:dev \
+          jhudsl/ottrpal:main \
           quiz_format || exit_code=$?
 
         report_path=${{ github.workspace }}/check_reports/question_error_report.tsv
